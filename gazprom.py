@@ -84,7 +84,8 @@ def data_process():
   fig.set_figheight(10) # размер по высоте
   fig.set_figwidth(10) # размер по ширине
   plt.show() # отображение
-
+  fig.savefig('maps.png') # сохранение картинки
+  
 def find_clusters(X, 
                   n_clusters, # количество кластеров
                   rseed=3, 
@@ -129,7 +130,7 @@ def find_clusters(X,
       break
 
     centers = new_centers
-    print(iter)
+    print(iter) # вывод прогресса вычислений
     
   return centers, labels
 
