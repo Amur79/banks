@@ -20,6 +20,7 @@
 """
 # для карты банкоматов
 import json
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -30,9 +31,9 @@ from sklearn.cluster import KMeans
 
 # Входные данные
 # данные расположения банкоматов Газпром в формате CSV
-file_gazprom_csv = "Moskow.csv"
+file_gazprom_csv = sys.argv[1] #"Moskow.csv"
 # открытые данные расположения торговых центров ы формате CSV
-file_opendata_csv = "torgovl_stat.csv"
+file_opendata_csv = sys.argv[2] # "torgovl_stat.csv"
 
 def data_process():
   """
