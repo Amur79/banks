@@ -6,6 +6,7 @@
 банкоматов в городе, в частности г. Москва
 Второй набор данных - открытые данные расположения торговых центров этом городе
 Для расчета используется кластерный анализ.
+Результаты выводятся в графическом виде
 
 Метод запуска, для простоты через терминал с передаче параметров в командной строке
 Пример:
@@ -13,6 +14,9 @@
     python3 gazprom.py Moskow.csv torgovl_stat.csv
 
 Требования: версия Python не ниже 3.6, файлы данных ы формате CSV
+
+Файлы программы находятся на "https://github.com/Amur79/banks.git"
+Для использования достаточно все скопировать в одну папку и распаковать открытые данные 
 """
 # для карты банкоматов
 import json
@@ -125,10 +129,23 @@ def data_process():
 
   x = np.array([open_df["lat"], open_df["long"]])
   x = np.transpose(x)
+  
+  print("Вычисление...")
+  # кластерный анализ и получение результатов
+  bankomats, labels = find_clusters(x, 100)
+  
+  # отображение результатов
+  fig, ax = plt.subplots()
+  
+  ax.scatter(open_df.lat, open_df.long, c='green', s=5, label = "ТЦ") # расположение торговых центров
+  ax.scatter(bankomats[:, 0], bankomats[:, 1], c='cyan', s=10, label = "Новые банкоматы") # вычисленное расположение банкоматов
+  ax.scatter(dat.long, dat.lat, c='red', s=10, label = "Текущение банкоматы") # текущее расположение банкоматов
 
-  centers, labels = find_clusters(x, 100)
-  print(centers)
-
+  ax.legend() # включаем легенду
+  
+  fig.set_figheight(10) # размер по высоте
+  fig.set_figwidth(10) # размер по ширине
+  plt.show() # отображение
 
 def find_clusters(X, 
                   n_clusters, # количество кластеров
@@ -174,6 +191,8 @@ def find_clusters(X,
       break
 
     centers = new_centers
+    print(iter)
+    
   return centers, labels
 
 
@@ -183,4 +202,3 @@ def find_clusters(X,
 # Запуск основного модуля
 data_process()
 
-# Финиш
