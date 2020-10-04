@@ -12,6 +12,7 @@
 Пример:
 
     python3 gazprom.py Moskow.csv torgovl_stat.csv
+    
 1. Moskow.csv - данные по терминалам банка города
 2. torgovl_stat.csv - открытые данные по торговым центрам этого же города
 
@@ -19,6 +20,10 @@
 
 Файлы программы находятся на "https://github.com/Amur79/banks.git"
 Для использования достаточно все скопировать в одну папку и распаковать открытые данные 
+
+На будущее:
+есть возможность использовать данное приложение и для других городов,
+с соответствующими входными данными и срезом города
 """
 # для карты банкоматов
 import json
@@ -39,6 +44,7 @@ file_gazprom_csv = sys.argv[1] #"Moskow.csv"
 # открытые данные расположения торговых центров ы формате CSV
 file_opendata_csv = sys.argv[2] # "torgovl_stat.csv"
 
+param_city = "Москва"
 # отображение yandex карты 
 class MapParams(object):
     def __init__(self, ln, lt):
@@ -74,7 +80,7 @@ def data_process():
   Основной модуль расчета эффективности расположения банкоматов
   """
   dat = pd.read_csv(file_gazprom_csv, sep='\t')
-  dat = dat[dat["Область"] == "Москва"]
+  dat = dat[dat["Область"] == param_city]
   dat["lat"] = dat["Широта"]
   dat["long"] = dat["\Долгота"]
   dat = dat.drop(["\Долгота", "Широта"], axis=1)
@@ -139,53 +145,60 @@ def data_process():
   fig.savefig('maps.png') # сохранение картинки
   fig2.savefig('mapcity.png') # сохранение картинки
   
-def find_clusters(X, 
-                  n_clusters, # количество кластеров
-                  rseed=3, 
-                  max_iters=1, # максимальное количество итераций
-                  weight_koef=0.000002): # весовые коэфициенты
-  """
-  Модуль кластерного анализа
-  """
-  rng = np.random.RandomState(rseed)
-  i = rng.permutation(X.shape[0])[:n_clusters]
-  centers = X[i]
-  # print(X[i])
+def find_clusters(X,
+                  n_clusters,  # количество кластеров
+                  rseed=3,
+                  max_iters=50,  # максимальное количество итераций
+                  weight_koef=0.000002):  # весовые коэфициенты
+    """
+    Модуль кластерного анализа
+    """
+    rng = np.random.RandomState(rseed)
+    i = rng.permutation(X.shape[0])[:n_clusters]
+    centers = X[i]
+    # print(X[i])
 
-  for iter in range(max_iters):
-    # print(centers)
-    labels = pairwise_distances_argmin(X, centers, metric='manhattan')
-    # weights = pairwise_distances(X, centers, metric='manhattan')
-    elems_count = Counter(labels)
-    lengths = []
-    for x_iter in range(X.shape[0]):
-        weights = []
-        for center_id in range(len(centers)):
-            weight = abs(X[x_iter, 0] - centers[center_id][0]) + abs(X[x_iter, 1] - centers[center_id][1])
-            # Поправка на очереди у банкомата
-            weight += weight_koef * elems_count[center_id]
-            weights.append(weight)
-        lengths.append(weights)
-    labels_res = []
-    for x in lengths:
-        labels_res.append(np.argmin(x))
-    labels = np.array(labels_res)
+    for iter in range(max_iters):
+        # Получаем номера ближайших банкоматов для всех точек в списке данных (ТЦ, адреса клиентов, стихийные рынки)
+        # Для расчёта используем манхэттэнскую метрику, чтобы учесть движение клиентов по кварталам и улицам
+        labels = pairwise_distances_argmin(X, centers, metric='manhattan')
+        # Считаем, как много клиентов-точек приходится на каждый банкомат
+        elems_count = Counter(labels)
+        elems_count_list = []
+        for i in range(n_clusters):
+            if i in elems_count:
+                elems_count_list.append(elems_count[i])
+            else:
+                elems_count_list.append(0)
+        elems_count_list = np.array(elems_count_list)
+        lengths = []
+        weight_new = np.zeros([X.shape[0], centers.shape[0]])
+        it = 0
+        for x in X:
+            # Считаем расстояние до ближайшего банкомата
+            weight = np.abs(x[0] - centers[:, 0]) + np.abs(x[1] - centers[:, 1])
+            # Но на этот раз прибавляем поправку, которая зависит от количества точек-клиентов на каждом банкомате
+            weight += weight_koef * elems_count_list
+            weight_new[it] = weight
+            it += 1
+        # Пересчитываем ближайшие банкоматы с учётом поправок
+        labels = np.argmin(weight_new, axis=1)
 
-    new_centers = np.array([X[labels == i].mean(0) for i in range(n_clusters)])
-    length = len(new_centers[np.isnan(new_centers)]) // 2
-    # lat_rand = np.array([X[:, 0].min()]*length) + (X[:, 0].max() - X[:, 0].min()) * np.random.random(length)
-    # long_rand = np.array([X[:, 1].min()]*length) + (X[:, 1].max() - X[:, 1].min()) * np.random.random(length)
-    # arr = np.transpose(np.array([lat_rand, long_rand]))
-    i = rng.permutation(X.shape[0])[:length]
-    new_centers[np.isnan(new_centers[:, 0])] = X[i]
+        new_centers = np.array([X[labels == i].mean(0) for i in range(n_clusters)])
+        length = len(new_centers[np.isnan(new_centers)]) // 2
+        # lat_rand = np.array([X[:, 0].min()]*length) + (X[:, 0].max() - X[:, 0].min()) * np.random.random(length)
+        # long_rand = np.array([X[:, 1].min()]*length) + (X[:, 1].max() - X[:, 1].min()) * np.random.random(length)
+        # arr = np.transpose(np.array([lat_rand, long_rand]))
+        i = rng.permutation(X.shape[0])[:length]
+        new_centers[np.isnan(new_centers[:, 0])] = X[i]
 
-    if np.all(centers == new_centers):
-      break
+        if np.all(centers == new_centers):
+            break
 
-    centers = new_centers
-    print(iter) # вывод прогресса вычислений
-    
-  return centers, labels
+        centers = new_centers
+        print(iter)  # вывод прогресса вычислений
+ 
+    return centers, labels
 
 
 # if __name__ == "__main__":
