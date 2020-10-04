@@ -45,6 +45,8 @@ file_gazprom_csv = sys.argv[1] #"Moskow.csv"
 file_opendata_csv = sys.argv[2] # "torgovl_stat.csv"
 
 param_city = "Москва"
+
+
 # отображение yandex карты 
 class MapParams(object):
     def __init__(self, ln, lt):
@@ -73,77 +75,86 @@ def load_map(mp):
     except IOError as ex:
         print("Ошибка записи временного файла:", ex)
         sys.exit(2)
-    return map_file
+    return map_file  
         
 def data_process():
-  """
-  Основной модуль расчета эффективности расположения банкоматов
-  """
-  dat = pd.read_csv(file_gazprom_csv, sep='\t')
-  dat = dat[dat["Область"] == param_city]
-  dat["lat"] = dat["Широта"]
-  dat["long"] = dat["\Долгота"]
-  dat = dat.drop(["\Долгота", "Широта"], axis=1)
+    """
+    Основной модуль расчета эффективности расположения банкоматов
+    """
+    dat = pd.read_csv(file_gazprom_csv, sep='\t')
+    dat = dat[dat["Область"] == param_city]
+    dat["lat"] = dat["Широта"]
+    dat["long"] = dat["\Долгота"]
+    dat = dat.drop(["\Долгота", "Широта"], axis=1)
 
-  open_data = pd.read_csv(file_opendata_csv)
-  types = []
-  lats = []
-  longs = []
+    open_data = pd.read_csv(file_opendata_csv)
+    types = []
+    lats = []
+    longs = []
 
-  for line in open_data.geoData:
-    typ = line.split(", ")[0].split('=')[1]
-    lat = line.split(", ")[1].split('[')[1]
-    long = line.split(", ")[2].split(']')[0]
-    types.append(typ)
-    lats.append(lat)
-    longs.append(long)
+    for line in open_data.geoData:
+        typ = line.split(", ")[0].split('=')[1]
+        lat = line.split(", ")[1].split('[')[1]
+        long = line.split(", ")[2].split(']')[0]
+        types.append(typ)
+        lats.append(lat)
+        longs.append(long)
 
-  open_df = pd.DataFrame({'types': types,
-                          'lat': lats,
-                          'long': longs})
+    open_df = pd.DataFrame({'types': types,
+                            'lat': lats,
+                            'long': longs})
 
-  open_df = open_df.astype({'lat': 'float64', 'long': 'float64'})
-  print(open_df.head())
+    open_df = open_df.astype({'lat': 'float64', 'long': 'float64'})
+    print(open_df.head())
 
-  x = np.array([open_df["lat"], open_df["long"]])
-  x = np.transpose(x)
+    x = np.array([open_df["lat"], open_df["long"]])
+    x = np.transpose(x)
   
-  print("Вычисление...")
-  # кластерный анализ и получение результатов
-  bankomats, labels = find_clusters(x, 100)
+    bankomats_current = np.array([dat["long"], dat["lat"]])
+    bankomats_current = np.transpose(bankomats_current)
+    current_weight = count_weight(x, bankomats_current)
+    
+    print("Текущее условное время обслуживания клиента {}".format(current_weight))
+    print("Вычисление...")
+  
+    # кластерный анализ и получение результатов
+    bankomats, labels = find_clusters(x, 100)
 
-  # подготовка координат для получения yandex карт, 
-  # максимальные и минимальные коррдитанты открытых данных
-  lt = (open_df.lat.max() - open_df.lat.min()) / 2 + open_df.lat.min()
-  ln = (open_df.long.max() - open_df.long.min()) / 2 + open_df.long.min()
-  
-  mp = MapParams(lt, ln)
-  # звгружаем файл Яндекса                 
-  file_map = os.getcwd() + "/" + load_map(mp)
-  
-  with cbook.get_sample_data(file_map) as image_file:
-   image = plt.imread(image_file) 
-  
-  # отображение результатов
-  fig, ax = plt.subplots()
-  
-  ax.scatter(open_df.lat, open_df.long, c='green', s=5, label = "ТЦ") # расположение торговых центров
-  ax.scatter(bankomats[:, 0], bankomats[:, 1], c='cyan', s=10, label = "Новые банкоматы") # вычисленное расположение банкоматов
-  ax.scatter(dat.long, dat.lat, c='red', s=10, label = "Текущение банкоматы") # текущее расположение банкоматов
+    new_weight = count_weight(x, bankomats)
+    print("Рассчитанное условное время обслуживания клиента при введении системы: {}".format(new_weight))
 
-  ax.legend() # включаем легенду
-  ax.set_xlabel('Широта')
-  ax.set_ylabel('Долгота')  
-  ax.set_title('Банкоматы Газпробанка')
-
-  fig2, ax2 = plt.subplots()
-  ax2.imshow(image) # отображаем карту
+    # подготовка координат для получения yandex карт, 
+    # максимальные и минимальные коррдитанты открытых данных
+    lt = (open_df.lat.max() - open_df.lat.min()) / 2 + open_df.lat.min()
+    ln = (open_df.long.max() - open_df.long.min()) / 2 + open_df.long.min()
   
-  fig.set_figheight(10) # размер по высоте
-  fig.set_figwidth(10) # размер по ширине
-  plt.show() # отображение
-  fig.savefig('maps.png') # сохранение картинки
-  fig2.savefig('mapcity.png') # сохранение картинки
+    mp = MapParams(lt, ln)
+    # звгружаем файл Яндекса                 
+    file_map = os.getcwd() + "/" + load_map(mp)
+  
+    with cbook.get_sample_data(file_map) as image_file:
+        image = plt.imread(image_file) 
+  
+    # отображение результатов
+    fig, ax = plt.subplots()
+  
+    ax.scatter(open_df.lat, open_df.long, c='green', s=5, label = "ТЦ") # расположение торговых центров
+    ax.scatter(bankomats[:, 0], bankomats[:, 1], c='cyan', s=10, label = "Новые банкоматы") # вычисленное расположение банкоматов
+    ax.scatter(dat.long, dat.lat, c='red', s=10, label = "Текущение банкоматы") # текущее расположение банкоматов
+
+    ax.legend() # включаем легенду
+    ax.set_xlabel('Широта')
+    ax.set_ylabel('Долгота')  
+    ax.set_title('Банкоматы Газпробанка')
+
+    fig2, ax2 = plt.subplots()
+    ax2.imshow(image) # отображаем карту
+  
+    fig.set_figheight(10) # размер по высоте
+    fig.set_figwidth(10) # размер по ширине
+    plt.show() # отображение
+    fig.savefig('maps.png') # сохранение картинки
+    fig2.savefig('mapcity.png') # сохранение картинки
   
 def find_clusters(X,
                   n_clusters,  # количество кластеров
@@ -197,13 +208,42 @@ def find_clusters(X,
 
         centers = new_centers
         print(iter)  # вывод прогресса вычислений
- 
-    return centers, labels
+    
+    # вывод списка координат новых банкоматов
+    print("Координаты новых банкоматов")
+    k=1
+    for i in centers:
+        print(k,i)
+        k=k+1
+        
+   
+    return centers, labels # return def find_clusters
 
-
-# if __name__ == "__main__":
-#     image_bank(file_gazprom_csv, file_opendata_csv)
+def count_weight(X, centers, weight_koef=0.000002):
+    labels = pairwise_distances_argmin(X, centers, metric='manhattan')
+    # Считаем, как много клиентов-точек приходится на каждый банкомат
+    elems_count = Counter(labels)
+    elems_count_list = []
+    for i in range(centers.shape[0]):
+        if i in elems_count:
+            elems_count_list.append(elems_count[i])
+        else:
+            elems_count_list.append(0)
+    elems_count_list = np.array(elems_count_list)
+    lengths = []
+    weight_new = np.zeros([X.shape[0], centers.shape[0]])
+    it = 0
+    for x in X:
+        # Считаем расстояние до ближайшего банкомата
+        weight = np.abs(x[0] - centers[:, 0]) + np.abs(x[1] - centers[:, 1])
+        # Но на этот раз прибавляем поправку, которая зависит от количества точек-клиентов на каждом банкомате
+        # Мат.ожидание при распределении Пуассона lambda = n*p, где p - вероятность, что потребуется банкомат
+        weight += weight_koef * elems_count_list
+        weight_new[it] = weight
+        it += 1
+    return(np.sum(np.min(weight_new, axis=1)))
 
 # Запуск основного модуля
-data_process()
-
+if __name__ == "__main__":
+    data_process()
+   
