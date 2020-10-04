@@ -22,13 +22,15 @@
 """
 # для карты банкоматов
 import json
-import sys
+import sys, requests, os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.cbook as cbook 
+import matplotlib.ticker as ticker
+
 from sklearn.metrics import pairwise_distances_argmin, pairwise_distances
 from collections import Counter
-
 from sklearn.cluster import KMeans
 
 # Входные данные
@@ -37,6 +39,36 @@ file_gazprom_csv = sys.argv[1] #"Moskow.csv"
 # открытые данные расположения торговых центров ы формате CSV
 file_opendata_csv = sys.argv[2] # "torgovl_stat.csv"
 
+# отображение yandex карты 
+class MapParams(object):
+    def __init__(self, ln, lt):
+        self.lat = lt # Координаты центра карты на старте. 
+        self.lon = ln
+        self.zoom = 5  # Масштаб карты на старте. Изменяется от 1 до 19
+        self.type = "map" # Другие значения "sat", "sat,skl"
+    # Преобразование координат в параметр ll, требуется без пробелов, через запятую и без скобок
+    def ll(self):
+        return str(self.lon)+","+str(self.lat)
+    
+def load_map(mp):
+    map_request = "http://static-maps.yandex.ru/1.x/?ll={ll}&z={z}&l={type}".format(ll=mp.ll(), z=mp.zoom, type=mp.type)
+    response = requests.get(map_request)
+    if not response:
+        print("Ошибка выполнения запроса:")
+        print(map_request)
+        print("Http статус:", response.status_code, "(", response.reason, ")")
+        sys.exit(1)
+ 
+    # Запись полученного изображения в файл.
+    map_file = "map.png"
+    try:
+        with open(map_file, "wb") as file:
+            file.write(response.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return map_file
+        
 def data_process():
   """
   Основной модуль расчета эффективности расположения банкоматов
@@ -73,6 +105,18 @@ def data_process():
   print("Вычисление...")
   # кластерный анализ и получение результатов
   bankomats, labels = find_clusters(x, 100)
+
+  # подготовка координат для получения yandex карт, 
+  # максимальные и минимальные коррдитанты открытых данных
+  lt = (open_df.lat.max() - open_df.lat.min()) / 2 + open_df.lat.min()
+  ln = (open_df.long.max() - open_df.long.min()) / 2 + open_df.long.min()
+  
+  mp = MapParams(lt, ln)
+  # звгружаем файл Яндекса                 
+  file_map = os.getcwd() + "/" + load_map(mp)
+  
+  with cbook.get_sample_data(file_map) as image_file:
+   image = plt.imread(image_file) 
   
   # отображение результатов
   fig, ax = plt.subplots()
@@ -82,16 +126,23 @@ def data_process():
   ax.scatter(dat.long, dat.lat, c='red', s=10, label = "Текущение банкоматы") # текущее расположение банкоматов
 
   ax.legend() # включаем легенду
+  ax.set_xlabel('Широта')
+  ax.set_ylabel('Долгота')  
+  ax.set_title('Банкоматы Газпробанка')
+
+  fig2, ax2 = plt.subplots()
+  ax2.imshow(image) # отображаем карту
   
   fig.set_figheight(10) # размер по высоте
   fig.set_figwidth(10) # размер по ширине
   plt.show() # отображение
   fig.savefig('maps.png') # сохранение картинки
+  fig2.savefig('mapcity.png') # сохранение картинки
   
 def find_clusters(X, 
                   n_clusters, # количество кластеров
                   rseed=3, 
-                  max_iters=50, # максимальное количество итераций
+                  max_iters=1, # максимальное количество итераций
                   weight_koef=0.000002): # весовые коэфициенты
   """
   Модуль кластерного анализа
